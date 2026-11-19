@@ -1,0 +1,60 @@
+# API FastAPI.
+# replicas: 1 tant que le jeton administrateur n'est pas stable (carte « jeton stable »).
+# Une fois livré, passer à 2 : le rolling update reste sans coupure (maxUnavailable: 0).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: senalert
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      initContainers:
+        # Attend que PostgreSQL soit prêt avant de lancer l'API
+        - name: wait-for-db
+          image: postgres:17
+          command: ["sh", "-c", "until pg_isready -h db-service -p 5432; do echo 'attente de la base...'; sleep 2; done"]
+      containers:
+        - name: backend
+          # DOCKERHUB_USER est remplacé par le pipeline (variable du dépôt)
+          image: DOCKERHUB_USER/senalert-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: senalert-secret, key: DATABASE_URL }
+            - name: ADMIN_USER
+              valueFrom:
+                configMapKeyRef: { name: senalert-config, key: ADMIN_USER }
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: senalert-secret, key: ADMIN_PASSWORD }
+            - name: CORS_ORIGINS
+              valueFrom:
+                configMapKeyRef: { name: senalert-config, key: CORS_ORIGINS }
+          # /api/health existe déjà ; passer à /health quand la route racine sera ajoutée
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 8000 }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
