@@ -1,0 +1,102 @@
+# Pipeline CD de SenAlert : déployer la stack sur Kubernetes.
+#
+# Déclencheurs :
+#   - push sur main de ce dépôt (manifestes modifiés)
+#   - repository_dispatch envoyé par backend-ci ou frontend-ci après le push d'une image
+#   - lancement manuel (onglet Actions > Run workflow)
+#
+# Ce job tourne sur le runner auto-hébergé installé sur la machine qui héberge le cluster.
+name: CD - Déploiement Kubernetes
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [backend-updated, frontend-updated]
+  workflow_dispatch:
+
+# Un seul déploiement à la fois
+concurrency:
+  group: deploy-senalert
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
+    env:
+      NS: senalert
+      DOCKERHUB_USER: ${{ vars.DOCKERHUB_USER }}
+    steps:
+      # 1. Récupération des manifestes
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Accès au cluster
+      - name: Vérifier l'accès au cluster
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      # 3. Compte Docker Hub dans les noms d'images
+      - name: Renseigner le compte Docker Hub dans les manifestes
+        run: sed -i "s|DOCKERHUB_USER|${DOCKERHUB_USER}|g" k8s/*.yaml
+
+      # 4. Namespace d'abord (kubectl apply -f k8s/ suit l'ordre alphabétique :
+      #    sans cette étape, le namespace serait créé après les autres ressources)
+      - name: Créer le namespace
+        run: kubectl apply -f k8s/namespace.yaml
+
+      # 5. Secret Kubernetes construit à partir des secrets GitHub (rien dans le dépôt)
+      - name: Créer ou mettre à jour le Secret Kubernetes
+        env:
+          PG_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          kubectl create secret generic senalert-secret -n "$NS" \
+            --from-literal=POSTGRES_USER=admin \
+            --from-literal=POSTGRES_PASSWORD="$PG_PASSWORD" \
+            --from-literal=DATABASE_URL="postgresql://admin:${PG_PASSWORD}@db-service:5432/senalert" \
+            --from-literal=ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # 6. Application de toutes les ressources
+      - name: Appliquer les manifestes
+        run: kubectl apply -f k8s/
+
+      # 7. Rolling update : Kubernetes remplace les pods un par un, sans coupure
+      - name: Redéployer
+        run: |
+          case "${{ github.event.action }}" in
+            backend-updated)  kubectl rollout restart deployment/backend -n "$NS" ;;
+            frontend-updated) kubectl rollout restart deployment/frontend -n "$NS" ;;
+            *) kubectl rollout restart deployment/backend deployment/frontend -n "$NS" ;;
+          esac
+
+      # 8. Attente de la fin du déploiement
+      - name: Attendre la fin du rolling update
+        run: |
+          kubectl rollout status deployment/postgres -n "$NS" --timeout=180s
+          kubectl rollout status deployment/backend -n "$NS" --timeout=180s
+          kubectl rollout status deployment/frontend -n "$NS" --timeout=180s
+
+      # 9. Vérification post-déploiement (health check)
+      - name: Vérifier que l'application répond
+        run: |
+          kubectl get pods -n "$NS"
+          echo "Backend :"
+          kubectl exec -n "$NS" deploy/backend -- python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/api/health').read().decode())"
+          echo "Frontend vers backend (via nginx) :"
+          kubectl exec -n "$NS" deploy/frontend -- wget -qO- http://localhost/api/health
+
+      # 10. Notification : résumé dans l'onglet du run
+      - name: Notification
+        if: always()
+        run: |
+          {
+            echo "### Déploiement SenAlert : ${{ job.status }}"
+            echo "- Déclencheur : ${{ github.event_name }} ${{ github.event.action }}"
+            echo "- Commit : ${{ github.sha }}"
+          } >> "$GITHUB_STEP_SUMMARY"

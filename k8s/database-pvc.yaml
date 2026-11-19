@@ -1,0 +1,11 @@
+# Volume persistant : les signalements survivent aux redéploiements
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: senalert-data
+  namespace: senalert
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi

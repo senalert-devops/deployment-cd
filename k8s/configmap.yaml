@@ -1,0 +1,12 @@
+# Variables NON sensibles. Les mots de passe sont dans le Secret "senalert-secret",
+# créé par le pipeline (jamais écrit dans ce dépôt).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: senalert-config
+  namespace: senalert
+data:
+  POSTGRES_DB: senalert
+  ADMIN_USER: admin
+  # Le navigateur appelle le site sur le NodePort 30080 (ou 8080 avec port-forward)
+  CORS_ORIGINS: "http://localhost:30080,http://localhost:8080,http://localhost:3000"
