@@ -3,9 +3,7 @@
 SenAlert est une plateforme de signalement des rues, canaux et caniveaux bouchés (Examen DevOps, L3 Big Data, DIT).
 Ce dépôt contient les manifestes Kubernetes et le pipeline de déploiement (CD). Il récupère les images publiées sur Docker Hub par les dépôts `backend-ci` et `frontend-ci`.
 
-## Pourquoi GitHub Actions
 
-Un seul outil CI/CD pour les trois dépôts, comme l'exige l'énoncé. Nous avons choisi GitHub Actions parce que l'organisation GitHub est contrôlée par toute l'équipe (le dépôt GitLab d'origine appartenait à un seul membre, ce qui empêchait de configurer les secrets du pipeline), que les workflows sont versionnés avec le code, et que le runner auto-hébergé permet de déployer sur le cluster local.
 
 ## Architecture
 
