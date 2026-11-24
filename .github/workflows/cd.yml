@@ -104,7 +104,7 @@ jobs:
               kubectl rollout restart deployment/frontend -n $env:NS
             }
             default {
-              kubectl rollout restart deployment/backend deployment/frontend -n $env:NS
+               rollout restart deployment/backend deployment/frontend -n $env:NS
             }
           }
 
@@ -133,7 +133,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           Write-Output "Frontend vers backend (via nginx) :"
-          kubectl exec -n $env:NS deploy/frontend -- wget -qO- http://localhost/api/health
+          kubectl exec -n $env:NS deploy/frontend -- wget -qO- http://127.0.0.1/api/health
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # 10. Notification : résumé dans l'onglet du run
