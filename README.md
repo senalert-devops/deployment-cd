@@ -3,8 +3,6 @@
 SenAlert est une plateforme de signalement des rues, canaux et caniveaux bouchés (Examen DevOps, L3 Big Data, DIT).
 Ce dépôt contient les manifestes Kubernetes et le pipeline de déploiement (CD). Il récupère les images publiées sur Docker Hub par les dépôts `backend-ci` et `frontend-ci`.
 
-
-
 ## Architecture
 
 ```
